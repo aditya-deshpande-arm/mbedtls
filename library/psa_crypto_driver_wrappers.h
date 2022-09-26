@@ -24,6 +24,10 @@
 #include "psa/crypto.h"
 #include "psa/crypto_driver_common.h"
 
+#if defined(P256_CRYPTO_DRIVER)
+#include "../3rdparty/p256-m/p256-m_driver_interface.h"
+#endif /* P256_CRYPTO_DRIVER */
+
 /*
  * Initialization and termination functions
  */

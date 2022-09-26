@@ -19,6 +19,7 @@
  */
 
 #include "common.h"
+#include <stdio.h>
 
 #if defined(MBEDTLS_PSA_CRYPTO_C)
 

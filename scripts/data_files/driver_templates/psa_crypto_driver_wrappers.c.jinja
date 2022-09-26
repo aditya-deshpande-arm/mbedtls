@@ -45,6 +45,15 @@
 #include "test/drivers/test_driver.h"
 #endif /* PSA_CRYPTO_DRIVER_TEST */
 
+#if defined(P256_CRYPTO_DRIVER)
+#ifndef PSA_CRYPTO_DRIVER_PRESENT
+#define PSA_CRYPTO_DRIVER_PRESENT
+#endif
+#ifndef PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT
+#define PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT
+#endif
+#endif /* P256_CRYPTO_DRIVER */
+
 /* Repeat above block for each JSON-declared driver during autogeneration */
 #endif /* MBEDTLS_PSA_CRYPTO_DRIVERS */
 
@@ -170,7 +179,6 @@ psa_status_t psa_driver_wrapper_sign_message(
             (void)status;
             break;
     }
-
     return( psa_sign_message_builtin( attributes,
                                       key_buffer,
                                       key_buffer_size,
@@ -208,25 +216,7 @@ psa_status_t psa_driver_wrapper_verify_message(
                         key_buffer,
                         key_buffer_size,
                         alg,
-                        input,
-                        input_length,
-                        signature,
-                        signature_length );
-            /* Declared with fallback == true */
-            if( status != PSA_ERROR_NOT_SUPPORTED )
-                return( status );
-#endif /* PSA_CRYPTO_DRIVER_TEST */
-#endif /* PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT */
-            break;
-
-        /* Add cases for opaque driver here */
-#if defined(PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT)
-#if defined(PSA_CRYPTO_DRIVER_TEST)
-        case PSA_CRYPTO_TEST_DRIVER_LOCATION:
-            return( mbedtls_test_opaque_signature_verify_message(
-                        attributes,
-                        key_buffer,
-                        key_buffer_size,
+                        input,mbedtls_ecdh_calc_secret
                         alg,
                         input,
                         input_length,
@@ -303,6 +293,27 @@ psa_status_t psa_driver_wrapper_sign_hash(
             if( status != PSA_ERROR_NOT_SUPPORTED )
                 return( status );
 #endif /* PSA_CRYPTO_DRIVER_TEST */
+#if defined (P256_CRYPTO_DRIVER)
+            if( PSA_KEY_TYPE_IS_ECC( attributes->core.type ) && 
+                PSA_ALG_IS_ECDSA(alg) &&
+                attributes->core.type == PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1) &&
+                attributes->core.bits == 256 )
+            {
+                fprintf ( stderr, "\nSign Case Matched \n" );
+                status = p256m_sign_hash(
+                        attributes,
+                            key_buffer,
+                            key_buffer_size,
+                            alg,
+                            hash,
+                            hash_length,
+                            signature,
+                            signature_size,
+                            signature_length );
+                if( status != PSA_ERROR_NOT_SUPPORTED )
+                return( status );
+            }
+#endif /* P256_CRYPTO_DRIVER */
 #endif /* PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT */
             /* Fell through, meaning no accelerator supports this operation */
             return( psa_sign_hash_builtin( attributes,
@@ -387,8 +398,27 @@ psa_status_t psa_driver_wrapper_verify_hash(
             if( status != PSA_ERROR_NOT_SUPPORTED )
                 return( status );
 #endif /* PSA_CRYPTO_DRIVER_TEST */
+#if defined (P256_CRYPTO_DRIVER)
+            if( PSA_KEY_TYPE_IS_ECC( attributes->core.type ) && 
+                PSA_ALG_IS_ECDSA(alg) &&
+                attributes->core.type == PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1) &&
+                attributes->core.bits == 256 )
+            {
+                fprintf ( stderr, "\nVerify Case Matched \n" );
+                status = p256m_verify_hash(
+                        attributes,
+                            key_buffer,
+                            key_buffer_size,
+                            alg,
+                            hash,
+                            hash_length,
+                            signature,
+                            signature_length );
+                if( status != PSA_ERROR_NOT_SUPPORTED )
+                return( status );
+            }
+#endif /* P256_CRYPTO_DRIVER */
 #endif /* PSA_CRYPTO_ACCELERATOR_DRIVER_PRESENT */
-
             return( psa_verify_hash_builtin( attributes,
                                              key_buffer,
                                              key_buffer_size,
