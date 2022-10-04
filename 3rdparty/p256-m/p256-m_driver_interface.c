@@ -1,5 +1,3 @@
-// #include <bits/stdint-uintn.h>
-// #include <stdio.h>
 #include "mbedtls/platform.h"
 #include "p256-m_driver_interface.h"
 #include "p256-m/p256-m.h"
@@ -7,7 +5,7 @@
 #include "psa/crypto_struct.h"
 #include "psa/crypto_types.h"
 #include "psa/crypto_values.h"
-//#include "psa_crypto_core.h"
+#include "psa_crypto_driver_wrappers.h"
 #include "psa_crypto_ecp.h"
 
 psa_status_t p256m_to_psa_error( int ret )
@@ -27,6 +25,30 @@ psa_status_t p256m_to_psa_error( int ret )
     }
 }
 
+psa_status_t p256m_generate_key(
+    uint8_t *key_buffer, 
+    size_t key_buffer_size, 
+    size_t *key_buffer_length )
+{
+    psa_status_t status = PSA_ERROR_NOT_SUPPORTED;
+    if( key_buffer_size != 32 )
+        return( status );
+    
+    uint8_t *public_key_buffer = NULL;
+    public_key_buffer = mbedtls_calloc( 1, 64);
+    if( public_key_buffer == NULL)
+        return( PSA_ERROR_INSUFFICIENT_MEMORY );
+
+    status = p256m_to_psa_error(
+                p256_gen_keypair(key_buffer, public_key_buffer) );
+    if( status == PSA_SUCCESS )
+        *key_buffer_length = 32;
+
+    free( public_key_buffer );
+
+    return status;
+}
+
 psa_status_t p256m_sign_hash(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer,
@@ -43,8 +65,7 @@ psa_status_t p256m_sign_hash(
         return( status );
 
     status = p256m_to_psa_error(
-        p256_ecdsa_sign(signature, key_buffer, hash, hash_length)
-    );
+            p256_ecdsa_sign(signature, key_buffer, hash, hash_length) );
     if( status == PSA_SUCCESS )
         *signature_length = 64;
     
@@ -67,8 +88,7 @@ psa_status_t p256m_verify_hash_with_public_key(
         
     const uint8_t *public_key_buffer = key_buffer + 1;
     status = p256m_to_psa_error(
-        p256_ecdsa_verify( signature, public_key_buffer, hash, hash_length)
-    );
+            p256_ecdsa_verify( signature, public_key_buffer, hash, hash_length) );
 
     return status;
 }
@@ -95,14 +115,13 @@ psa_status_t p256m_verify_hash_with_key_pair(
         return( PSA_ERROR_INSUFFICIENT_MEMORY );
     *public_key_length = 65;
 
-    status = mbedtls_to_psa_error(
-                mbedtls_psa_ecp_export_public_key(
-                        attributes,
-                        key_buffer,
-                        key_buffer_size,
-                        public_key_buffer,
-                        public_key_buffer_size,
-                        public_key_length) );
+    status = psa_driver_wrapper_export_public_key(
+                attributes,
+                key_buffer,
+                key_buffer_size,
+                public_key_buffer,
+                public_key_buffer_size,
+                public_key_length );
     if( status != PSA_SUCCESS )
         goto exit;
 
