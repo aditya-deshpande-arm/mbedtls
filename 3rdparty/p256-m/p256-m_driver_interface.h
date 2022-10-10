@@ -21,7 +21,7 @@ psa_status_t p256m_sign_hash(
     size_t signature_size,
     size_t *signature_length );
 
-psa_status_t p256m_verify_hash_with_public_key(
+psa_status_t p256m_verify_hash(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer,
     size_t key_buffer_size,
