@@ -3511,7 +3511,7 @@ psa_status_t psa_key_derivation_input_key(
  *                                key agreement and derivation algorithm
  *                                \c alg (\c PSA_ALG_XXX value such that
  *                                #PSA_ALG_IS_KEY_AGREEMENT(\c alg) is true
- *                                and #PSA_ALG_IS_RAW_KEY_AGREEMENT(\c alg)
+ *                                and #(\c alg)
  *                                is false).
  *                                The operation must be ready for an
  *                                input of the type given by \p step.

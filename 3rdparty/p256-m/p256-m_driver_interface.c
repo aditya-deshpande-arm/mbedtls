@@ -7,6 +7,7 @@
 #include "psa/crypto_values.h"
 #include "psa_crypto_driver_wrappers.h"
 #include "psa_crypto_ecp.h"
+#include <stdio.h>
 
 psa_status_t p256m_to_psa_error( int ret )
 {
@@ -49,11 +50,31 @@ psa_status_t p256m_generate_key(
     return status;
 }
 
-psa_status_t p256m_sign_hash(
-    const psa_key_attributes_t *attributes,
+psa_status_t p256m_ecdh(
     const uint8_t *key_buffer,
     size_t key_buffer_size,
-    psa_algorithm_t alg,
+    const uint8_t *peer_key,
+    size_t peer_key_length,
+    uint8_t *shared_secret,
+    size_t shared_secret_size,
+    size_t *shared_secret_length )
+{
+    psa_status_t status = PSA_ERROR_NOT_SUPPORTED;
+    if( key_buffer_size != 32 || shared_secret_size < 64 || 
+        peer_key_length != 65 )
+        return ( status );
+
+    status = p256m_to_psa_error(
+                p256_ecdh_shared_secret(shared_secret, key_buffer, peer_key+1) );
+    if( status == PSA_SUCCESS )
+        *shared_secret_length = 32;
+    
+    return status;
+}
+
+psa_status_t p256m_sign_hash(
+    const uint8_t *key_buffer,
+    size_t key_buffer_size,
     const uint8_t *hash,
     size_t hash_length,
     uint8_t *signature,
@@ -73,10 +94,8 @@ psa_status_t p256m_sign_hash(
 }
 
 psa_status_t p256m_verify_hash_with_public_key(
-    const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer,
     size_t key_buffer_size,
-    psa_algorithm_t alg,
     const uint8_t *hash,
     size_t hash_length,
     const uint8_t *signature,
@@ -97,7 +116,6 @@ psa_status_t p256m_verify_hash(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer,
     size_t key_buffer_size,
-    psa_algorithm_t alg,
     const uint8_t *hash,
     size_t hash_length,
     const uint8_t *signature,
@@ -126,10 +144,8 @@ psa_status_t p256m_verify_hash(
         goto exit;
 
     status = p256m_verify_hash_with_public_key(
-                attributes,
                 public_key_buffer,
                 public_key_buffer_size,
-                alg,
                 hash,
                 hash_length,
                 signature,

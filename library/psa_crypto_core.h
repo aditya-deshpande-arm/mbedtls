@@ -547,4 +547,15 @@ psa_status_t psa_verify_hash_builtin(
  */
 psa_status_t psa_validate_unstructured_key_bit_size( psa_key_type_t type,
                                                      size_t bits );
+
+psa_status_t psa_key_agreement_raw_builtin( 
+    const psa_key_attributes_t *attributes,
+    const uint8_t *key_buffer,
+    size_t key_buffer_size,
+    psa_algorithm_t alg,
+    const uint8_t *peer_key,
+    size_t peer_key_length,
+    uint8_t *shared_secret,
+    size_t shared_secret_size,
+    size_t *shared_secret_length );
 #endif /* PSA_CRYPTO_CORE_H */
