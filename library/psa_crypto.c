@@ -5758,6 +5758,12 @@ psa_status_t psa_key_agreement_raw_builtin( const psa_key_attributes_t *attribut
     }
 }
 
+/** Internal function for raw key agreement
+ *  Calls the driver wrapper which will hand off key agreement task
+ *  to the driver's implementation if a driver is present. 
+ *  Fallback specified in the driver wrapper is built-in raw key agreement 
+ *  (psa_key_agreement_raw_builtin).
+ */
 static psa_status_t psa_key_agreement_raw_internal( psa_algorithm_t alg,
                                                     psa_key_slot_t *private_key,
                                                     const uint8_t *peer_key,
@@ -5773,7 +5779,7 @@ static psa_status_t psa_key_agreement_raw_internal( psa_algorithm_t alg,
       .core = private_key->attr
     };
 
-    return( psa_driver_wrapper_raw_key_agreement( &attributes, private_key->key.data,
+    return( psa_driver_wrapper_key_agreement( &attributes, private_key->key.data,
                                                   private_key->key.bytes, 
                                                   alg, peer_key, peer_key_length, 
                                                   shared_secret, shared_secret_size, 

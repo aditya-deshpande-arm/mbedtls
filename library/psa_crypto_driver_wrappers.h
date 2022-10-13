@@ -369,7 +369,7 @@ psa_status_t psa_driver_wrapper_asymmetric_decrypt(
  * Raw Key Agreement
  */
 
- psa_status_t psa_driver_wrapper_raw_key_agreement(
+ psa_status_t psa_driver_wrapper_key_agreement(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer,
     size_t key_buffer_size,

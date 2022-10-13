@@ -32,9 +32,18 @@ psa_status_t p256m_generate_key(
     size_t *key_buffer_length )
 {
     psa_status_t status = PSA_ERROR_NOT_SUPPORTED;
+
+    /* 
+     *  p256-m generates a 32 byte private key, and expects to write to a buffer
+     *   that is of that size. */
     if( key_buffer_size != 32 )
         return( status );
     
+    /*
+     *  p256-m's keypair generation function outputs both public and private
+     *  keys. Allocate a buffer to which the public key will be written. The
+     *  private key will be written to key_buffer, which is passed to this
+     *  function as an argument. */
     uint8_t *public_key_buffer = NULL;
     public_key_buffer = mbedtls_calloc( 1, 64);
     if( public_key_buffer == NULL)
@@ -45,6 +54,10 @@ psa_status_t p256m_generate_key(
     if( status == PSA_SUCCESS )
         *key_buffer_length = 32;
 
+    /*
+     *  The storage format for a SECP256R1 keypair is just the private key, so
+     *  the public key does not need to be passed back to the caller. Therefore
+     *  the buffer containing it can be freed. */
     free( public_key_buffer );
 
     return status;
@@ -59,8 +72,11 @@ psa_status_t p256m_ecdh(
     size_t shared_secret_size,
     size_t *shared_secret_length )
 {
+    /*
+     *  Check that private key = 32 bytes, peer public key = 65 bytes,
+     *  and that the shared secret buffer is big enough. */
     psa_status_t status = PSA_ERROR_NOT_SUPPORTED;
-    if( key_buffer_size != 32 || shared_secret_size < 64 || 
+    if( key_buffer_size != 32 || shared_secret_size < 32 || 
         peer_key_length != 65 )
         return ( status );
 
@@ -68,7 +84,7 @@ psa_status_t p256m_ecdh(
                 p256_ecdh_shared_secret(shared_secret, key_buffer, peer_key+1) );
     if( status == PSA_SUCCESS )
         *shared_secret_length = 32;
-    
+
     return status;
 }
 
@@ -93,7 +109,9 @@ psa_status_t p256m_sign_hash(
     return status;
 }
 
-psa_status_t p256m_verify_hash_with_public_key(
+/*  This function expects the key buffer to contain a 65 byte public key,
+ *  as exported by psa_export_public_key() */
+static psa_status_t p256m_verify_hash_with_public_key(
     const uint8_t *key_buffer,
     size_t key_buffer_size,
     const uint8_t *hash,
@@ -133,6 +151,9 @@ psa_status_t p256m_verify_hash(
         return( PSA_ERROR_INSUFFICIENT_MEMORY );
     *public_key_length = 65;
 
+    /*  The contents of key_buffer may either be the 32 byte private key
+     *  (keypair representation), or the 65 byte public key. To ensure the
+     *  latter is obtained, the public key is exported. */
     status = psa_driver_wrapper_export_public_key(
                 attributes,
                 key_buffer,
