@@ -32,6 +32,45 @@ import sys
 
 from mbedtls_dev import build_tree
 
+class Size:
+    def __init__(self, text: int, data: int, bss: int, total: int):
+        self.text = text
+        self.data = data
+        self.bss = bss
+        self.total = total
+    def __eq__(self, __o: object) -> bool:
+        return (self.text == __o.text) and \
+               (self.data == __o.data) and \
+               (self.bss == __o.bss)
+
+    def __ne__(self, __o: object) -> bool:
+        return not self.__eq__(__o)
+
+    def __lt__(self, __o: object) -> bool:
+        return self.total < __o.total
+
+    def __le__(self, __o: object) -> bool:
+        return self.__lt__(__o) or self.__eq__(__o)
+
+    def __gt__(self, __o: object) -> bool:
+        return self.total > __o.total
+
+    def __ge__(self, __o: object) -> bool:
+        return self.__gt__(__o) or self.__eq__(__o)
+
+    def __add__(self, __o: object) -> object:
+        text = self.text + __o.text
+        data = self.data + __o.data
+        bss = self.bss + __o.bss
+        total = self.total + __o.total
+        return Size(text,data,bss,total)
+
+    def __sub__(self, __o: object) -> object:
+        text = self.text - __o.text
+        data = self.data - __o.data
+        bss = self.bss - __o.bss
+        total = self.total - __o.total
+        return Size(text,data,bss,total)
 
 class CodeSizeComparison:
     """Compare code size between two Git revisions."""
@@ -53,6 +92,10 @@ class CodeSizeComparison:
         self.new_rev = new_revision
         self.git_command = "git"
         self.make_command = "make"
+
+        self.old_sizes = {}
+        self.new_sizes = {}
+        self.change_pcts = {}
 
     @staticmethod
     def validate_revision(revision):
@@ -86,6 +129,54 @@ class CodeSizeComparison:
             cwd=git_worktree_path, stderr=subprocess.STDOUT,
         )
 
+    def _gen_code_size_report(self, revision, git_worktree_path):
+        """Generate a code size report for each executable and store them
+        in a dictionary"""
+        if revision == "current":
+            print("Measuring code size in current work directory.")
+        else:
+            print("Measuring code size for", revision)
+
+        # Size for libmbedcrypto.a
+        result = subprocess.check_output(
+            ["size -t library/libmbedcrypto.a"], cwd=git_worktree_path, shell=True
+        )
+        crypto_text = result.decode()
+        # Size for libmbedx509.a
+        result = subprocess.check_output(
+            ["size -t library/libmbedx509.a"], cwd=git_worktree_path, shell=True
+        )
+        x509_text = result.decode()
+        # Size for libmbedtls.a
+        result = subprocess.check_output(
+            ["size -t library/libmbedtls.a"], cwd=git_worktree_path, shell=True
+        )
+        tls_text = result.decode()
+
+        def size_text_to_dict(txt):
+            """Helper function: Converts 'size' command output to dictionary"""
+            size_dict = {}
+            for line in txt.splitlines()[1:]:
+                data = line.split()
+                exe_size = Size(data[0], data[1], data[2], data[3])
+                size_dict[f'{data[5]}'] = exe_size
+            return size_dict
+
+        lst = [(crypto_text),(x509_text),(tls_text)]
+        size_lst = [size_text_to_dict(t) for t in lst]
+        size_dicts = {
+            'crypto': size_lst[0],
+            'x509': size_lst[1],
+            'tls': size_lst[2]
+        }
+
+        if revision == self.old_rev:
+            self.old_sizes = size_dicts
+        if revision == self.new_rev:
+            self.new_sizes = size_dicts
+
+        return size_dicts
+
     def _gen_code_size_csv(self, revision, git_worktree_path):
         """Generate code size csv file."""
 
@@ -94,14 +185,19 @@ class CodeSizeComparison:
             print("Measuring code size in current work directory.")
         else:
             print("Measuring code size for", revision)
-        result = subprocess.check_output(
-            ["size library/*.o"], cwd=git_worktree_path, shell=True
-        )
-        size_text = result.decode()
+        sizes_dict = self._gen_code_size_report(revision, git_worktree_path)
+
+        def write_dict_to_csv(d):
+            for (f,s) in d.items():
+                csv_file.write(f'{f}, {s.text}, {s.data}, {s.bss}, {s.total}\n')
+
         csv_file = open(os.path.join(self.csv_dir, csv_fname), "w")
-        for line in size_text.splitlines()[1:]:
-            data = line.split()
-            csv_file.write("{}, {}\n".format(data[5], data[3]))
+        csv_file.write('file, text, data, bss, TOTAL\n')
+        for (n,d) in sizes_dict.items():
+            csv_file.write(f'{n}\n')
+            write_dict_to_csv(d)
+            csv_file.write('\n')
+
 
     def _remove_worktree(self, git_worktree_path):
         """Remove temporary worktree."""
@@ -124,6 +220,7 @@ class CodeSizeComparison:
         else:
             git_worktree_path = self._create_git_worktree(revision)
             self._build_libraries(git_worktree_path)
+            self._gen_code_size_report(revision, git_worktree_path)
             self._gen_code_size_csv(revision, git_worktree_path)
             self._remove_worktree(git_worktree_path)
 
@@ -132,39 +229,33 @@ class CodeSizeComparison:
         old and new. Measured code size results of these two revisions
         must be available."""
 
-        old_file = open(os.path.join(self.csv_dir, self.old_rev + ".csv"), "r")
-        new_file = open(os.path.join(self.csv_dir, self.new_rev + ".csv"), "r")
         res_file = open(os.path.join(self.result_dir, "compare-" + self.old_rev
                                      + "-" + self.new_rev + ".csv"), "w")
+        def write_dict_to_csv(old_d, new_d):
+            tot_change_pct = ""
+            for (f,s) in new_d.items():
+                new_size = int(s.total)
+                if f in old_d:
+                    old_size = int(old_d[f].total)
+                    change = new_size - old_size
+                    change_pct = change / old_size
+                    res_file.write("{}, {}, {}, {}, {:.2%}\n".format(f, \
+                               new_size, old_size, change, float(change_pct)))
+                    if f == "(TOTALS)":
+                        tot_change_pct = str(change_pct)
+                else:
+                    res_file.write("{}, {}\n".format(f, new_size))
+            return tot_change_pct
 
         res_file.write("file_name, this_size, old_size, change, change %\n")
         print("Generating comparison results.")
 
-        old_ds = {}
-        for line in old_file.readlines()[1:]:
-            cols = line.split(", ")
-            fname = cols[0]
-            size = int(cols[1])
-            if size != 0:
-                old_ds[fname] = size
+        for exe in self.new_sizes:
+            res_file.write(f"{exe}\n")
+            tot = write_dict_to_csv(self.old_sizes[f'{exe}'], self.new_sizes[f'{exe}'])
+            res_file.write('\n')
+            self.change_pcts[f'{exe}'] = tot
 
-        new_ds = {}
-        for line in new_file.readlines()[1:]:
-            cols = line.split(", ")
-            fname = cols[0]
-            size = int(cols[1])
-            new_ds[fname] = size
-
-        for fname in new_ds:
-            this_size = new_ds[fname]
-            if fname in old_ds:
-                old_size = old_ds[fname]
-                change = this_size - old_size
-                change_pct = change / old_size
-                res_file.write("{}, {}, {}, {}, {:.2%}\n".format(fname, \
-                               this_size, old_size, change, float(change_pct)))
-            else:
-                res_file.write("{}, {}\n".format(fname, this_size))
         return 0
 
     def get_comparision_results(self):
