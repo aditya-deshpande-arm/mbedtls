@@ -72,10 +72,20 @@ class Size:
         total = self.total - __o.total
         return Size(text,data,bss,total)
 
+CONFIG_CMDS = {
+    'default': ('','make -j lib'),
+    'full': ('scripts/config.py full', 'make -j lib'),
+    'baremetal': ('scripts/config.py baremetal', 'make -j lib'),
+    'tfm': ('', 'make lib CC=armclang CFLAGS=\"--target=arm-arm-none-eabi \
+                 -mcpu=cortex-m33 \
+                 -DMBEDTLS_CONFIG_FILE=\\\\\\"../configs/tfm_mbedcrypto_config_profile_medium.h\\\\\\" \
+                 -DMBEDTLS_PSA_CRYPTO_CONFIG_FILE=\\\\\\"../configs/crypto_config_profile_medium.h\\\\\\" \"')
+}
+
 class CodeSizeComparison:
     """Compare code size between two Git revisions."""
 
-    def __init__(self, old_revision, new_revision, result_dir):
+    def __init__(self, old_revision, new_revision, result_dir, config):
         """
         old_revision: revision to compare against
         new_revision:
@@ -91,7 +101,7 @@ class CodeSizeComparison:
         self.old_rev = old_revision
         self.new_rev = new_revision
         self.git_command = "git"
-        self.make_command = "make"
+        self.pre_build_commands, self.make_command = CONFIG_CMDS[config]
 
         self.old_sizes = {}
         self.new_sizes = {}
@@ -124,8 +134,14 @@ class CodeSizeComparison:
         """Build libraries in the specified worktree."""
 
         my_environment = os.environ.copy()
+        if self.pre_build_commands != '':
+            subprocess.check_output(
+                self.pre_build_commands, env=my_environment, shell=True,
+                cwd=git_worktree_path, stderr=subprocess.STDOUT,
+        )
+
         subprocess.check_output(
-            [self.make_command, "-j", "lib"], env=my_environment,
+            self.make_command, env=my_environment, shell=True,
             cwd=git_worktree_path, stderr=subprocess.STDOUT,
         )
 
@@ -212,17 +228,11 @@ class CodeSizeComparison:
     def _get_code_size_for_rev(self, revision):
         """Generate code size csv file for the specified git revision."""
 
-        # Check if the corresponding record exists
-        csv_fname = revision + ".csv"
-        if (revision != "current") and \
-           os.path.exists(os.path.join(self.csv_dir, csv_fname)):
-            print("Code size csv file for", revision, "already exists.")
-        else:
-            git_worktree_path = self._create_git_worktree(revision)
-            self._build_libraries(git_worktree_path)
-            self._gen_code_size_report(revision, git_worktree_path)
-            self._gen_code_size_csv(revision, git_worktree_path)
-            self._remove_worktree(git_worktree_path)
+        git_worktree_path = self._create_git_worktree(revision)
+        self._build_libraries(git_worktree_path)
+        self._gen_code_size_report(revision, git_worktree_path)
+        self._gen_code_size_csv(revision, git_worktree_path)
+        self._remove_worktree(git_worktree_path)
 
     def compare_code_size(self):
         """Generate results of the size changes between two revisions,
@@ -238,7 +248,10 @@ class CodeSizeComparison:
                 if f in old_d:
                     old_size = int(old_d[f].total)
                     change = new_size - old_size
-                    change_pct = change / old_size
+                    if change != 0:
+                        change_pct = change / old_size
+                    else:
+                        change_pct = 0
                     res_file.write("{}, {}, {}, {}, {:.2%}\n".format(f, \
                                new_size, old_size, change, float(change_pct)))
                     if f == "(TOTALS)":
@@ -290,6 +303,11 @@ def main():
         help="new revision for comparison, default is the current work \
               directory, including uncommitted changes."
     )
+    parser.add_argument(
+        "-c", "--config", type=str, default="default",
+        help="optional configuration for Mbed TLS. Default uses current \
+              config. Options: full, baremetal, tfm."
+    )
     comp_args = parser.parse_args()
 
     if os.path.isfile(comp_args.result_dir):
@@ -306,7 +324,8 @@ def main():
         new_revision = "current"
 
     result_dir = comp_args.result_dir
-    size_compare = CodeSizeComparison(old_revision, new_revision, result_dir)
+    size_compare = CodeSizeComparison(old_revision, new_revision, result_dir,
+                                      comp_args.config)
     return_code = size_compare.get_comparision_results()
     sys.exit(return_code)
 
